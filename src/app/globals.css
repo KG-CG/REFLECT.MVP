@@ -1,2 +1,13 @@
 @tailwind base; @tailwind components; @tailwind utilities;
-body { @apply bg-ink text-slate-200 antialiased; font-family: ui-sans-serif, system-ui, sans-serif; }
+body { @apply bg-ink text-slate-200 antialiased; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+/* Futuristic backdrop: soft neon glows plus a faint grid that fades out toward the bottom. */
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(55rem 30rem at 50% -10%, rgba(139, 123, 255, 0.2), transparent),
+    linear-gradient(rgba(196,181,253,0.035) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, rgba(196,181,253,0.035) 1px, transparent 1px) 0 0 / 48px 48px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 40%, transparent 100%); mask-image: linear-gradient(to bottom, #000 40%, transparent 100%); }
+::selection { background: rgba(139, 123, 255, 0.4); }
+.btn-neon { @apply bg-accent font-semibold text-white shadow-glow transition hover:brightness-110; }
+.text-gradient { @apply bg-gradient-to-r from-white to-neon bg-clip-text text-transparent; }
+@media (prefers-reduced-motion: reduce) { .animate-pulse { animation: none; } }
