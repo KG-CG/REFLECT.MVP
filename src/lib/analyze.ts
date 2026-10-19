@@ -24,8 +24,7 @@ export function computeMetrics(ps: Position[]): Metrics {
   const days = ps.length ? Math.max(1, (Date.now() - Math.min(...ps.map((p) => p.entryTs))) / 864e5) : 1;
   const priced = open.filter((p) => p.markSol !== undefined); // null = no price data available
   const grossWin = sum(wins.map(pnl)), grossLoss = Math.abs(sum(losses.map(pnl)));
-  const avgWin = avg(wins.map(pnl)), avgLoss = Math.abs(avg(losses.map(pnl)));
-  const sizes = ps.map((p) => p.costSol), meanSize = avg(sizes);
+    const sizes = ps.map((p) => p.costSol), meanSize = avg(sizes);
   const sd = Math.sqrt(avg(sizes.map((s) => (s - meanSize) ** 2)));
   const lastTs = (p: Position) => p.exitTs ?? p.entryTs;
   const recent = [...ps].sort((x, y) => lastTs(y) - lastTs(x)).slice(0, 12).map((p) => {
@@ -43,7 +42,8 @@ export function computeMetrics(ps: Position[]): Metrics {
     openPositions: open.length, openCostSol: sum(open.map((p) => p.costSol)),
     recent, topTokens, concentrationPct: (topTokens[0]?.share || 0) * 100, tradesPerDay: ps.length / days,
     avgWinPct: avg(wins.map((p) => pnl(p) / p.costSol)), avgLossPct: Math.abs(avg(losses.map((p) => pnl(p) / p.costSol))),
-    payoffRatio: avgLoss ? avgWin / avgLoss : 0, profitFactor: grossLoss ? grossWin / grossLoss : 0,
+    // Per-trade return ratio, so it matches the "+x% / -y%" shown beside it and isn't skewed by a few big positions.
+    payoffRatio: avg(losses.map((p) => pnl(p) / p.costSol)) ? avg(wins.map((p) => pnl(p) / p.costSol)) / Math.abs(avg(losses.map((p) => pnl(p) / p.costSol))) : 0, profitFactor: grossLoss ? grossWin / grossLoss : 0,
     expectancySol: closed.length ? sum(closed.map(pnl)) / closed.length : 0,
     largestLossSol: worst, largestLossShare: grossLoss ? worst / grossLoss : 0,
     sizeCv: meanSize ? sd / meanSize : 0,
@@ -87,7 +87,7 @@ export function compare(me: Metrics, o: Metrics, name: string): string[] {
   const wr = (me.winRate - o.winRate) * 100;
   if (Math.abs(wr) > 5) out.push(`Your win rate is ${Math.abs(Math.round(wr))} points ${wr < 0 ? "lower" : "higher"} than ${name}.`);
   if (me.payoffRatio && o.payoffRatio && Math.abs(me.payoffRatio - o.payoffRatio) > 0.3)
-    out.push(`Your average win is ${me.payoffRatio.toFixed(1)}× your average loss; ${name}'s is ${o.payoffRatio.toFixed(1)}×.`);
+    out.push(`Your average win return is ${me.payoffRatio.toFixed(1)}× your average loss return; ${name}'s is ${o.payoffRatio.toFixed(1)}×.`);
   const tpd = me.tradesPerDay - o.tradesPerDay;
   if (Math.abs(tpd) > 1) out.push(`You open ${Math.abs(tpd).toFixed(1)} ${tpd > 0 ? "more" : "fewer"} positions per day than ${name}.`);
   return out.length ? out : [`Your patterns are close to ${name}'s.`];
@@ -111,7 +111,7 @@ export function buildTips(me: Report, sol: Money): Tip[] {
   if (m.closedTrades >= 10 && m.payoffRatio) {
     const breakeven = 1 / (1 + m.payoffRatio);
     if (m.winRate < breakeven) tips.push({ id: "edge", priority: 1, title: "Your math doesn't work yet: fix the payoff, not just the win rate",
-      evidence: `Wins average ${m.payoffRatio.toFixed(2)}× your losses, so you need a ${pct(breakeven)} win rate to break even. You're at ${pct(m.winRate)} (${sol(m.expectancySol)} per trade).`,
+      evidence: `Your average win (+${Math.round(m.avgWinPct * 100)}%) is ${m.payoffRatio.toFixed(2)}× your average loss (−${Math.round(m.avgLossPct * 100)}%), so you need a ${pct(breakeven)} win rate to break even. You're at ${pct(m.winRate)} (${sol(m.expectancySol)} per trade).`,
       action: m.avgLossPct > m.avgWinPct
         ? `Cut losers faster: your average loss is ${pct(m.avgLossPct)} of the position vs ${pct(m.avgWinPct)} for wins. Set a hard exit around −${Math.max(10, Math.round(m.avgWinPct * 50))}% before you enter.`
         : "Raise the bar for entries (fewer, higher-conviction trades) or let winners run further before taking profit." });
@@ -169,7 +169,7 @@ function buildStrengths(m: Metrics, sol: Money): string[] {
   const s: string[] = [];
   if (m.closedTrades >= 10 && m.expectancySol > 0) s.push(`Positive expectancy: ${sol(m.expectancySol)} per closed trade.`);
   if (m.profitFactor > 1.2) s.push(`Profit factor of ${m.profitFactor.toFixed(2)}: your wins outweigh your losses.`);
-  if (m.payoffRatio >= 1.5) s.push(`Your average win is ${m.payoffRatio.toFixed(1)}× your average loss.`);
+  if (m.payoffRatio >= 1.5) s.push(`Your average winning trade returns ${m.payoffRatio.toFixed(1)}× what your average loser costs.`);
   if (m.avgHoldWinMin > m.avgHoldLossMin * 1.2 && m.avgHoldLossMin > 0) s.push("You let winners run longer than losers.");
   if (m.concentrationPct && m.concentrationPct < 25 && m.topTokens.length >= 3) s.push("Capital is well spread across tokens.");
   return s;
