@@ -29,7 +29,7 @@ export function Stat({ label, value, hint, tone = "neutral" }: { label: string; 
 }
 
 export function SourceBadge() {
-  return <span className="rounded-full bg-win/10 px-2 py-0.5 text-[11px] font-medium text-win">● Live</span>;
+  return <span className="shrink-0 whitespace-nowrap rounded-full bg-win/10 px-2 py-0.5 text-[11px] font-medium text-win">● Live</span>;
 }
 
 export const fmtMin = (n: number) => (n >= 120 ? `${(n / 60).toFixed(1)} h` : `${Math.round(n)} min`);

@@ -31,9 +31,9 @@ export function Results({ data }: { data: AnalysisResult }) {
         <Stat label="Positions / day" value={m.tradesPerDay.toFixed(1)} tone={m.tradesPerDay > 5 ? "bad" : "neutral"} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-5">
-        <div className="lg:col-span-3"><RecentTrades data={data} /></div>
-        <div className="lg:col-span-2"><Card title="Behavior patterns" subtitle="Detected from your actual trades" id="patterns">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+        <div className="min-w-0 lg:col-span-3"><RecentTrades data={data} /></div>
+        <div className="min-w-0 lg:col-span-2"><Card title="Behavior patterns" subtitle="Detected from your actual trades" id="patterns">
           {data.me.patterns.length === 0 ? <p className="text-sm text-slate-400">No strong negative patterns in this window.</p> : (
             <ul className="space-y-2">{data.me.patterns.map((p) => (
               <li key={p.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
@@ -106,14 +106,14 @@ function RecentTrades({ data }: { data: AnalysisResult }) {
   return (
     <Card title="Recent trades" subtitle="Latest positions with their real result" id="recent">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[420px] text-left text-sm">
-          <thead><tr className="text-[11px] uppercase tracking-wider text-slate-500"><th className="pb-2 font-medium">Token</th><th className="pb-2 text-right font-medium">Size</th><th className="pb-2 text-right font-medium">PnL</th><th className="pb-2 text-right font-medium">Return</th><th className="pb-2 text-right font-medium">When</th></tr></thead>
+        <table className="w-full text-left text-sm">
+          <thead><tr className="text-[11px] uppercase tracking-wider text-slate-500"><th className="pb-2 font-medium">Token</th><th className="hidden pb-2 text-right font-medium sm:table-cell">Size</th><th className="pb-2 text-right font-medium">PnL</th><th className="pb-2 text-right font-medium">Return</th><th className="pb-2 text-right font-medium">When</th></tr></thead>
           <tbody className="divide-y divide-white/5">{rows.map((t, i) => {
             const tone = t.pnlSol === null ? "text-slate-400" : t.pnlSol >= 0 ? "text-win" : "text-loss";
             return (
               <tr key={i}>
-                <td className="py-2.5 pr-2"><span className="font-medium text-white">{t.token}</span>{t.open && <span className="ml-2 rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-neon">OPEN</span>}</td>
-                <td className="py-2.5 text-right tabular-nums text-slate-300">{signed(t.costSol, false)}</td>
+                <td className="py-2.5 pr-2"><span className="font-medium text-white break-all">{t.token}</span>{t.open && <span className="ml-2 rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-neon">OPEN</span>}</td>
+                <td className="hidden py-2.5 text-right tabular-nums text-slate-300 sm:table-cell">{signed(t.costSol, false)}</td>
                 <td className={`py-2.5 text-right font-medium tabular-nums ${tone}`}>{t.pnlSol === null ? "n/a" : signed(t.pnlSol)}</td>
                 <td className={`py-2.5 text-right tabular-nums ${tone}`}>{t.pnlPct === null ? "–" : `${t.pnlPct >= 0 ? "+" : ""}${Math.round(t.pnlPct * 100)}%`}</td>
                 <td className="py-2.5 text-right text-xs text-slate-500">{ago(t.ts)}</td>
