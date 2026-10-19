@@ -1,0 +1,2 @@
+@tailwind base; @tailwind components; @tailwind utilities;
+body { @apply bg-ink text-slate-200 antialiased; font-family: ui-sans-serif, system-ui, sans-serif; }
