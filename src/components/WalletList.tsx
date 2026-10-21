@@ -26,7 +26,7 @@ const WALLETS: Record<Wallet, { label: string; url: string; browse: string; get:
  * Handles are stored as "@name" and resolved to a wallet server-side (lib/handles.ts).
  */
 export function WalletList({ items, setItems, max, slot }: { items: string[]; setItems: (v: string[]) => void; max: number; slot: string }) {
-  const [mode, setMode] = useState<Mode>("handle"), [v, setV] = useState(""), [err, setErr] = useState("");
+  const [mode, setMode] = useState<Mode>("handle"), [v, setV] = useState(""), [err, setErr] = useState(""), [limit, setLimit] = useState(false);
   const add = (raw = v, m: Mode = mode) => {
     let x = raw.trim();
     if (!x) return;
@@ -34,7 +34,7 @@ export function WalletList({ items, setItems, max, slot }: { items: string[]; se
     else { if (!HANDLE.test(x)) return setErr("FOMO handles are letters, numbers and underscores."); x = `@${x.replace(/^@/, "")}`; }
     if (items.some((i) => i.toLowerCase() === x.toLowerCase())) return setErr("Already added.");
     // PREMIUM HOOK: the cap comes from lib/tiers.ts; $REFLECT holders get a higher one.
-    if (items.length >= max) return setErr(`Free tier allows ${max}. $REFLECT holders unlock more.`);
+    if (items.length >= max) { setErr(""); return setLimit(true); }
     setItems([...items, x]); setV(""); setErr("");
   };
   const latest = useRef({ items, add });
@@ -113,7 +113,15 @@ export function WalletList({ items, setItems, max, slot }: { items: string[]; se
           );
         })}
       </ul>
-      <p className="mt-2 text-xs text-slate-500">{items.length} of {max} used</p>
+      {limit && (
+        <div role="dialog" aria-modal="true" aria-labelledby="limit-title" onClick={() => setLimit(false)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-xl border border-line bg-ink p-5 shadow-glow">
+            <h3 id="limit-title" className="text-base font-semibold text-white">Wallet limit reached</h3>
+            <p className="mt-2 text-sm text-slate-300">The free tier tracks up to {max} wallets here. $REFLECT holders unlock more.</p>
+            <button autoFocus onClick={() => setLimit(false)} className="btn-neon mt-4 w-full rounded-lg px-4 py-2 text-sm">Got it</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

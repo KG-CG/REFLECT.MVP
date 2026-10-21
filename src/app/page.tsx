@@ -76,7 +76,7 @@ export default function Home() {
         {data && <div className={loading ? "opacity-60 transition" : "transition"}><Results data={data} /></div>}
 
         <footer className="border-t border-line pt-5 text-xs leading-relaxed text-slate-500">
-          Reflect is a journaling tool, not financial advice. Free tier: {lim.personal} wallets + {lim.fomo} FOMO wallets; $REFLECT holders will unlock more wallets and deeper analysis.
+          Reflect is a journaling tool, not financial advice.
         </footer>
       </main>
     </div>
