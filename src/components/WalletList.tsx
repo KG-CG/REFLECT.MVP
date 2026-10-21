@@ -8,10 +8,17 @@ type Mode = "address" | "handle";
 // Pulls an address out of pasted text, e.g. a pump.fun profile link.
 const findAddress = (t: string) => t.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g)?.find((m) => ADDR.test(m));
 
-type Provider = { isPhantom?: boolean; connect: () => Promise<{ publicKey?: { toString(): string } } | void>; publicKey?: { toString(): string } };
-const getPhantom = (): Provider | undefined => {
-  const w = window as unknown as { phantom?: { solana?: Provider }; solana?: Provider };
-  return w.phantom?.solana ?? (w.solana?.isPhantom ? w.solana : undefined);
+type Provider = { connect: () => Promise<{ publicKey?: { toString(): string } } | void>; publicKey?: { toString(): string } };
+type Wallet = "phantom" | "solflare";
+const WALLETS: Record<Wallet, { label: string; url: string; get: () => Provider | undefined }> = {
+  phantom: {
+    label: "Phantom", url: "https://phantom.app/download",
+    get: () => { const w = window as unknown as { phantom?: { solana?: Provider }; solana?: Provider & { isPhantom?: boolean } }; return w.phantom?.solana ?? (w.solana?.isPhantom ? w.solana : undefined); },
+  },
+  solflare: {
+    label: "Solflare", url: "https://solflare.com/download",
+    get: () => { const w = window as unknown as { solflare?: Provider & { isSolflare?: boolean } }; return w.solflare?.isSolflare ? w.solflare : undefined; },
+  },
 };
 
 /**
@@ -30,11 +37,11 @@ export function WalletList({ items, setItems, max }: { items: string[]; setItems
     if (items.length >= max) return setErr(`Free tier allows ${max}. $REFLECT holders unlock more.`);
     setItems([...items, x]); setV(""); setErr("");
   };
-  const connectPhantom = async () => {
-    const ph = getPhantom();
-    if (!ph) { window.open("https://phantom.app/download", "_blank", "noopener"); return setErr("Phantom wasn't found. Install it, then try again."); }
-    try { const r = await ph.connect(); const a = (r && r.publicKey ? r.publicKey : ph.publicKey)?.toString(); if (a) add(a); else setErr("Phantom didn't return an address."); }
-    catch { setErr("Phantom connection was cancelled."); }
+  const connectWallet = async (k: Wallet) => {
+    const { label, url, get } = WALLETS[k], p = get();
+    if (!p) { window.open(url, "_blank", "noopener"); return setErr(`${label} wasn't found. Install it, then try again.`); }
+    try { const r = await p.connect(); const a = (r && r.publicKey ? r.publicKey : p.publicKey)?.toString(); if (a) add(a); else setErr(`${label} didn't return an address.`); }
+    catch { setErr(`${label} connection was cancelled.`); }
   };
   const pasteClipboard = async () => {
     try { const t = await navigator.clipboard.readText(); const a = findAddress(t); if (a) add(a); else setErr("No Solana address found on your clipboard."); }
@@ -54,9 +61,11 @@ export function WalletList({ items, setItems, max }: { items: string[]; setItems
         <button type="submit" className="btn-neon rounded-lg px-4 text-sm">Add</button>
       </form>
       {mode === "address" && (
-        <div className="mt-2 flex gap-2">
-          <button type="button" onClick={connectPhantom} className="flex-1 rounded-lg border border-line bg-ink/70 px-3 py-2 text-xs text-slate-200 transition hover:border-accent">Connect Phantom</button>
-          <button type="button" onClick={pasteClipboard} className="flex-1 rounded-lg border border-line bg-ink/70 px-3 py-2 text-xs text-slate-200 transition hover:border-accent">Paste from clipboard</button>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {(Object.keys(WALLETS) as Wallet[]).map((k) => (
+            <button key={k} type="button" onClick={() => connectWallet(k)} className="rounded-lg border border-line bg-ink/70 px-3 py-2 text-xs text-slate-200 transition hover:border-accent">Connect {WALLETS[k].label}</button>
+          ))}
+          <button type="button" onClick={pasteClipboard} className="col-span-2 rounded-lg border border-line bg-ink/70 px-3 py-2 text-xs text-slate-200 transition hover:border-accent">Paste from clipboard</button>
         </div>
       )}
       {err && <p role="alert" className="mt-2 text-xs text-loss">{err}</p>}
