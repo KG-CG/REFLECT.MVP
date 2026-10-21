@@ -117,7 +117,7 @@ export function WalletList({ items, setItems, max, slot }: { items: string[]; se
         <div role="dialog" aria-modal="true" aria-labelledby="limit-title" onClick={() => setLimit(false)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-xl border border-line bg-ink p-5 shadow-glow">
             <h3 id="limit-title" className="text-base font-semibold text-white">Wallet limit reached</h3>
-            <p className="mt-2 text-sm text-slate-300">The free tier tracks up to {max} wallets here. $REFLECT holders unlock more.</p>
+            <p className="mt-2 text-sm text-slate-300">{max > 2 ? `You can track up to ${max} wallets here.` : `The free tier tracks up to ${max} wallets here. Holding $REFLECT unlocks up to 6.`}</p>
             <button autoFocus onClick={() => setLimit(false)} className="btn-neon mt-4 w-full rounded-lg px-4 py-2 text-sm">Got it</button>
           </div>
         </div>

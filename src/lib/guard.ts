@@ -1,8 +1,13 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 /**
  * Free-plan protection: a user-facing error type, a tiny TTL cache, a concurrency limiter and a daily budget.
  * All state is in-memory (per server instance). That is enough to stop accidental quota burn on free plans;
  * for hard guarantees across instances, back these with Upstash/Vercel KV.
  */
+
+/** Marks the current request as a $REFLECT holder so Limiter lets it jump the queue. */
+export const priorityContext = new AsyncLocalStorage<boolean>();
 
 /** Errors whose message is safe to show to users. `status` is the HTTP status the API returns. */
 export class PublicError extends Error {
@@ -35,12 +40,13 @@ export class TtlCache<V> {
 
 /** Runs at most `limit` tasks at once; extra callers wait in line. Keeps us under Helius free-plan rate limits. */
 export class Limiter {
-  private active = 0; private q: (() => void)[] = [];
+  private active = 0; private q: (() => void)[] = []; private hq: (() => void)[] = [];
   constructor(private limit: number) {}
   async run<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.active >= this.limit) await new Promise<void>((r) => this.q.push(r));
+    // $REFLECT holders wait in a separate line that is always served first.
+    if (this.active >= this.limit) await new Promise<void>((r) => (priorityContext.getStore() ? this.hq : this.q).push(r));
     this.active++;
-    try { return await fn(); } finally { this.active--; this.q.shift()?.(); }
+    try { return await fn(); } finally { this.active--; (this.hq.shift() ?? this.q.shift())?.(); }
   }
 }
 

@@ -1,12 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { AnalysisResult } from "@/lib/types";
-import { LIMITS, getTier } from "@/lib/tiers";
+import { LIMITS } from "@/lib/limits";
 import { Card } from "@/components/ui";
 import { WalletList } from "@/components/WalletList";
 import { Results } from "@/components/Results";
 
-const lim = LIMITS[getTier()];
 
 export default function Home() {
   const [wallets, setWallets] = useState<string[]>([]), [fomo, setFomo] = useState<string[]>([]);
@@ -18,6 +17,19 @@ export default function Home() {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => { try { const s = JSON.parse(localStorage.getItem("reflect") || "{}"); setWallets(s.wallets || []); setFomo(s.fomo || []); } catch {} setLoaded(true); }, []);
   useEffect(() => { if (loaded) localStorage.setItem("reflect", JSON.stringify({ wallets, fomo })); }, [loaded, wallets, fomo]);
+
+  // $REFLECT holders get higher limits; the server checks which of "my wallets" hold the token.
+  const [tier, setTier] = useState<"free" | "premium">("free");
+  useEffect(() => {
+    if (!loaded) return;
+    const addrs = wallets.filter((w) => !w.startsWith("@"));
+    if (!addrs.length) { setTier("free"); return; }
+    let stop = false;
+    fetch("/api/tier", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wallets: addrs }) })
+      .then((r) => r.json()).then((j) => { if (!stop) setTier(j.tier === "premium" ? "premium" : "free"); }).catch(() => {});
+    return () => { stop = true; };
+  }, [loaded, wallets]);
+  const lim = LIMITS[tier];
 
   // Client-side cooldown: protects free-plan API quota from repeated refresh clicks.
   const [cooldown, setCooldown] = useState(0);
