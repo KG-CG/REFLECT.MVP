@@ -4,6 +4,7 @@ import type { AnalysisResult } from "@/lib/types";
 import { LIMITS } from "@/lib/limits";
 import { Card } from "@/components/ui";
 import { WalletList } from "@/components/WalletList";
+import { BurnSchedule } from "@/components/BurnSchedule";
 import { Results } from "@/components/Results";
 
 
@@ -85,6 +86,8 @@ export default function Home() {
 
         {loading && <p className="text-sm text-slate-400">Scanning on-chain history. This can take up to ~30 seconds on free infrastructure…</p>}
         {loading && !data && <div className="space-y-3" aria-busy="true">{[0, 1, 2].map((i) => <div key={i} className="h-28 animate-pulse rounded-2xl border border-white/10 bg-panel/60" />)}</div>}
+        <BurnSchedule wallets={wallets} />
+
         {data && <div className={loading ? "opacity-60 transition" : "transition"}><Results data={data} /></div>}
 
         <footer className="border-t border-line pt-5 text-xs leading-relaxed text-slate-500">
