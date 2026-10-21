@@ -67,8 +67,8 @@ export default function Home() {
         {error && <p role="alert" className="rounded-xl border border-loss/40 bg-loss/5 p-3 text-sm text-loss">{error}</p>}
 
         <div className="grid gap-4 md:grid-cols-2">
-          <Card title="My Wallets" subtitle="Track your FOMO account or a Solana address"><WalletList items={wallets} setItems={setWallets} max={lim.personal} /></Card>
-          <Card title="FOMO Wallets I’m Tracking" subtitle="Traders to compare yourself against"><WalletList items={fomo} setItems={setFomo} max={lim.fomo} /></Card>
+          <Card title="My Wallets" subtitle="Track your FOMO account or a Solana address"><WalletList items={wallets} setItems={setWallets} max={lim.personal} slot="mine" /></Card>
+          <Card title="FOMO Wallets I’m Tracking" subtitle="Traders to compare yourself against"><WalletList items={fomo} setItems={setFomo} max={lim.fomo} slot="fomo" /></Card>
         </div>
 
         {loading && <p className="text-sm text-slate-400">Scanning on-chain history. This can take up to ~30 seconds on free infrastructure…</p>}

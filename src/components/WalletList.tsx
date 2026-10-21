@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const ADDR = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/; // base58 Solana address
 const HANDLE = /^@?\w{2,30}$/; // FOMO handle, "@" optional
@@ -25,37 +25,58 @@ const WALLETS: Record<Wallet, { label: string; url: string; browse: string; get:
  * Add/remove list with a toggle: track a Solana wallet address OR a FOMO account handle.
  * Handles are stored as "@name" and resolved to a wallet server-side (lib/handles.ts).
  */
-export function WalletList({ items, setItems, max }: { items: string[]; setItems: (v: string[]) => void; max: number }) {
+export function WalletList({ items, setItems, max, slot }: { items: string[]; setItems: (v: string[]) => void; max: number; slot: string }) {
   const [mode, setMode] = useState<Mode>("handle"), [v, setV] = useState(""), [err, setErr] = useState("");
-  const add = (raw = v) => {
+  const add = (raw = v, m: Mode = mode) => {
     let x = raw.trim();
     if (!x) return;
-    if (mode === "address") { x = findAddress(x) ?? x; if (!ADDR.test(x)) return setErr("That doesn't look like a Solana address (32–44 characters)."); }
+    if (m === "address") { x = findAddress(x) ?? x; if (!ADDR.test(x)) return setErr("That doesn't look like a Solana address (32–44 characters)."); }
     else { if (!HANDLE.test(x)) return setErr("FOMO handles are letters, numbers and underscores."); x = `@${x.replace(/^@/, "")}`; }
     if (items.some((i) => i.toLowerCase() === x.toLowerCase())) return setErr("Already added.");
     // PREMIUM HOOK: the cap comes from lib/tiers.ts; $REFLECT holders get a higher one.
     if (items.length >= max) return setErr(`Free tier allows ${max}. $REFLECT holders unlock more.`);
     setItems([...items, x]); setV(""); setErr("");
   };
+  const latest = useRef({ items, add });
+  latest.current = { items, add };
   const connectWallet = async (k: Wallet) => {
     const { label, url, browse, get } = WALLETS[k], p = get();
     if (!p) {
       // Mobile browsers have no wallet extension: reopen this page inside the wallet app's own browser.
       if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-        const here = encodeURIComponent(window.location.href);
+        // The wallet's browser reopens this URL; the effect below sees ?connect= and connects without another tap.
+        const u = new URL(window.location.href);
+        u.searchParams.set("connect", `${k}:${slot}`);
+        const here = encodeURIComponent(u.toString());
         window.location.href = `${browse}${here}?ref=${encodeURIComponent(window.location.origin)}`;
         return;
       }
       window.open(url, "_blank", "noopener");
       return setErr(`${label} wasn't found in this browser. Install the extension (or unlock it), then reload and try again.`);
     }
-    try { const r = await p.connect(); const a = (r && r.publicKey ? r.publicKey : p.publicKey)?.toString(); if (a) add(a); else setErr(`${label} didn't return an address.`); }
+    try { const r = await p.connect(); const a = (r && r.publicKey ? r.publicKey : p.publicKey)?.toString(); if (a) latest.current.add(a, "address"); else setErr(`${label} didn't return an address.`); }
     catch { setErr(`${label} connection was cancelled.`); }
   };
   const pasteClipboard = async () => {
-    try { const t = await navigator.clipboard.readText(); const a = findAddress(t); if (a) add(a); else setErr("No Solana address found on your clipboard."); }
+    try { const t = await navigator.clipboard.readText(); const a = findAddress(t); if (a) add(a, "address"); else setErr("No Solana address found on your clipboard."); }
     catch { setErr("Couldn't read the clipboard. Paste into the box instead."); }
   };
+  useEffect(() => {
+    const u = new URL(window.location.href), [k, target] = (u.searchParams.get("connect") || "").split(":");
+    if (target !== slot || !(k in WALLETS)) return;
+    let stop = false;
+    (async () => {
+      // Wallet browsers inject their provider a moment after load.
+      for (let i = 0; i < 30 && !WALLETS[k as Wallet].get() && !stop; i++) await new Promise((r) => setTimeout(r, 100));
+      if (stop) return;
+      u.searchParams.delete("connect");
+      window.history.replaceState(null, "", u.toString());
+      setMode("address");
+      await connectWallet(k as Wallet);
+    })();
+    return () => { stop = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const tab = (m: Mode, label: string) => (
     <button type="button" onClick={() => { setMode(m); setErr(""); }} aria-pressed={mode === m}
       className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${mode === m ? "bg-accent/20 text-white shadow-inner" : "text-slate-400 hover:text-white"}`}>{label}</button>
