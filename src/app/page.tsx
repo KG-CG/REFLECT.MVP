@@ -53,7 +53,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-2.5">
             {/* Logo: public/logo.jpg. */}
-            <img src="/logo.jpg" alt="Reflect logo" className="h-10 w-10 rounded-lg object-cover" />
+            <img src="/logo-sm.jpg" alt="Reflect logo" width={40} height={40} decoding="async" fetchPriority="high" className="h-10 w-10 rounded-lg object-cover" />
             <div className="font-semibold uppercase leading-none tracking-[0.2em] text-white">Reflect</div>
           </div>
           <div className="flex gap-2">

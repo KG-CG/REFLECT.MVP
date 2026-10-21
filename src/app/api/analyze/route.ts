@@ -49,10 +49,14 @@ export async function POST(req: Request) {
   if (!dailyAnalyses.take() && !(holder && holderReserve.take())) return bad("Reflect is at capacity for today (free-plan limits). Please come back tomorrow.", 503);
   return priorityContext.run(holder, async () => {
   try {
-    const mine = await Promise.all(wallets.map((w) => getPositions(w))); // multiple wallets merge into one profile
+    // Everything that doesn't depend on another step runs at once; wall-clock time is the slowest wallet, not the sum.
+    const [mine, others, solUsd] = await Promise.all([
+      Promise.all(wallets.map((w) => getPositions(w))), // multiple wallets merge into one profile
+      Promise.all(fomo.map(async (a) => { const r = await getPositions(a); return buildReport(r.positions, short(a), r.source); })),
+      getSolUsd(),
+    ]);
     const me = buildReport(mine.flatMap((r) => r.positions), `${wallets.length} wallet(s)`, "helius");
-    const others = await Promise.all(fomo.map(async (a) => { const r = await getPositions(a); return buildReport(r.positions, short(a), r.source); }));
-    return NextResponse.json(buildResult(me, others, await llmJournal(me), await getSolUsd()));
+    return NextResponse.json(buildResult(me, others, await llmJournal(me), solUsd));
   } catch (e) {
     if (isPublicError(e)) return bad(e.message, e.status);
     console.error("analyze failed:", e);
