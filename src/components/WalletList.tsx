@@ -10,13 +10,13 @@ const findAddress = (t: string) => t.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/g)?.find
 
 type Provider = { connect: () => Promise<{ publicKey?: { toString(): string } } | void>; publicKey?: { toString(): string } };
 type Wallet = "phantom" | "solflare";
-const WALLETS: Record<Wallet, { label: string; url: string; get: () => Provider | undefined }> = {
+const WALLETS: Record<Wallet, { label: string; url: string; browse: string; get: () => Provider | undefined }> = {
   phantom: {
-    label: "Phantom", url: "https://phantom.app/download",
+    label: "Phantom", url: "https://phantom.app/download", browse: "https://phantom.app/ul/browse/",
     get: () => { const w = window as unknown as { phantom?: { solana?: Provider }; solana?: Provider & { isPhantom?: boolean } }; return w.phantom?.solana ?? (w.solana?.isPhantom ? w.solana : undefined); },
   },
   solflare: {
-    label: "Solflare", url: "https://solflare.com/download",
+    label: "Solflare", url: "https://solflare.com/download", browse: "https://solflare.com/ul/v1/browse/",
     get: () => { const w = window as unknown as { solflare?: Provider & { isSolflare?: boolean } }; return w.solflare?.isSolflare ? w.solflare : undefined; },
   },
 };
@@ -38,8 +38,17 @@ export function WalletList({ items, setItems, max }: { items: string[]; setItems
     setItems([...items, x]); setV(""); setErr("");
   };
   const connectWallet = async (k: Wallet) => {
-    const { label, url, get } = WALLETS[k], p = get();
-    if (!p) { window.open(url, "_blank", "noopener"); return setErr(`${label} wasn't found. Install it, then try again.`); }
+    const { label, url, browse, get } = WALLETS[k], p = get();
+    if (!p) {
+      // Mobile browsers have no wallet extension: reopen this page inside the wallet app's own browser.
+      if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        const here = encodeURIComponent(window.location.href);
+        window.location.href = `${browse}${here}?ref=${encodeURIComponent(window.location.origin)}`;
+        return;
+      }
+      window.open(url, "_blank", "noopener");
+      return setErr(`${label} wasn't found in this browser. Install the extension (or unlock it), then reload and try again.`);
+    }
     try { const r = await p.connect(); const a = (r && r.publicKey ? r.publicKey : p.publicKey)?.toString(); if (a) add(a); else setErr(`${label} didn't return an address.`); }
     catch { setErr(`${label} connection was cancelled.`); }
   };
