@@ -59,7 +59,7 @@ export default function Home() {
           </div>
           <div className="flex gap-2">
             <RoadmapButton wallets={wallets} />
-            <button onClick={() => run()} disabled={!wallets.length || loading || cooldown > 0} className="btn-neon rounded-lg px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none">
+            <button onClick={() => run()} disabled={!wallets.length || loading || cooldown > 0} title={!wallets.length ? "Add a wallet to start" : undefined} aria-describedby={!wallets.length ? "analyze-help" : undefined} className="btn-neon rounded-lg px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none">
               {loading ? "Analyzing…" : cooldown > 0 ? `Wait ${cooldown}s` : data ? "Refresh summary" : "Analyze"}
             </button>
           </div>
@@ -82,9 +82,11 @@ export default function Home() {
         {error && <p role="alert" className="rounded-xl border border-loss/40 bg-loss/5 p-3 text-sm text-loss">{error}</p>}
 
         <div className="grid gap-4 md:grid-cols-2">
-          <Card title="My Wallets" subtitle="Track your FOMO account or a Solana address"><WalletList items={wallets} setItems={setWallets} max={lim.personal} slot="mine" /></Card>
-          <Card title="FOMO Wallets I’m Tracking" subtitle="Traders to compare yourself against"><WalletList items={fomo} setItems={setFomo} max={lim.fomo} slot="fomo" /></Card>
+          <Card title="My Wallets" subtitle="Track your FOMO account or a Solana address"><WalletList items={wallets} setItems={setWallets} max={lim.personal} slot="mine" empty="No wallets yet. Add your FOMO handle or a Solana address to get your journal." /></Card>
+          <Card title="FOMO Wallets I’m Tracking" subtitle="Traders to compare yourself against"><WalletList items={fomo} setItems={setFomo} max={lim.fomo} slot="fomo" connect={false} empty="Not tracking anyone yet. Optional: add a FOMO trader to compare against." /></Card>
         </div>
+        {loaded && !wallets.length && <p id="analyze-help" className="text-sm text-slate-400">Add a wallet to start. Analyze unlocks once My Wallets has at least one entry.</p>}
+        <p className="text-xs text-slate-500">Read-only: Reflect only reads public on-chain history. It never asks for your private key, seed phrase or a transaction signature.</p>
 
         {loading && <p className="text-sm text-slate-400">Scanning on-chain history. This can take up to ~30 seconds on free infrastructure…</p>}
         {loading && !data && <div className="space-y-3" aria-busy="true">{[0, 1, 2].map((i) => <div key={i} className="h-28 animate-pulse rounded-2xl border border-white/10 bg-panel/60" />)}</div>}

@@ -3,6 +3,8 @@ const MIN = 6e4;
 const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
 const pct = (n: number) => `${Math.round(n * 100)}%`;
+export const SAMPLE_TARGET = 30;
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 /** Formats an amount held in SOL. Shown in USD when a SOL price is known (FOMO users think in dollars). */
 export type Money = (solAmount: number, signed?: boolean) => string;
 export const makeMoney = (solUsd: number | null): Money => (n, signed = true) => {
@@ -18,7 +20,7 @@ export function computeMetrics(ps: Position[]): Metrics {
   const wins = closed.filter((p) => pnl(p) > 0), losses = closed.filter((p) => pnl(p) <= 0);
   const hold = (p: Position) => (p.exitTs! - p.entryTs) / MIN;
   const byToken = new Map<string, number>();
-  ps.forEach((p) => byToken.set(p.symbol || p.token, (byToken.get(p.token) || 0) + p.costSol));
+  ps.forEach((p) => { const token = p.symbol || p.token; byToken.set(token, (byToken.get(token) || 0) + p.costSol); });
   const total = sum([...byToken.values()]) || 1;
   const topTokens = [...byToken].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([token, v]) => ({ token, share: v / total }));
   const days = ps.length ? Math.max(1, (Date.now() - Math.min(...ps.map((p) => p.entryTs))) / 864e5) : 1;
@@ -107,7 +109,7 @@ export function buildTips(me: Report, sol: Money): Tip[] {
   const m = me.metrics, tips: Tip[] = [], has = (id: string) => me.patterns.some((p) => p.id === id);
   const costNote = (id: string) => { const c = me.patterns.find((p) => p.id === id)?.costSol; return c !== undefined && c < 0 ? ` These trades lost ${sol(-c, false)} in total.` : ""; };
   if (m.closedTrades < 10) tips.push({ id: "sample", priority: 3, title: "Build a bigger sample before drawing conclusions",
-    evidence: `Only ${m.closedTrades} closed trades in this window.`, action: "Treat these stats as directional. Keep logging for at least 30 closed trades before changing your strategy." });
+    evidence: `Only ${plural(m.closedTrades, "closed trade")} in this window.`, action: "Treat these stats as directional. Keep logging for at least 30 closed trades before changing your strategy." });
 
   if (m.closedTrades >= 10 && m.payoffRatio) {
     const breakeven = 1 / (1 + m.payoffRatio);
@@ -181,16 +183,24 @@ function buildStrengths(m: Metrics, sol: Money): string[] {
  */
 export function buildResult(me: Report, fomo: Report[], llmJournal?: string | null, solUsd: number | null = null): AnalysisResult {
   const m = me.metrics, sol = makeMoney(solUsd);
+  const holdSummary = [
+    m.closedTrades > 0 && m.winRate > 0 ? `Winners were held about ${mins(m.avgHoldWinMin)}` : "",
+    m.closedTrades > 0 && m.winRate < 1 ? `losers were held about ${mins(m.avgHoldLossMin)}` : "",
+  ].filter(Boolean).join(" and ");
   const templated = m.trades === 0
     ? "No swaps were found for this wallet in the recent window, so there is nothing to analyze yet."
-    : `Over ${m.trades} positions you won ${pct(m.winRate)} of ${m.closedTrades} closed trades, with realized PnL of ${sol(m.realizedPnlSol)}` +
+    : `Over ${plural(m.trades, "position")} you won ${pct(m.winRate)} of ${plural(m.closedTrades, "closed trade")}, with realized PnL of ${sol(m.realizedPnlSol)}` +
       (m.unrealizedPnlSol !== null ? ` (${sol(m.unrealizedPnlSol)} unrealized on open positions)` : "") + ". " +
       (m.closedTrades >= 10 ? `On average a closed trade made ${sol(m.expectancySol)}; winners returned ${pct(m.avgWinPct)} and losers lost ${pct(m.avgLossPct)}. ` : "") +
-      `Winners were held about ${mins(m.avgHoldWinMin)} and losers about ${mins(m.avgHoldLossMin)}. ` +
+      (holdSummary ? `${holdSummary}. ` : "") +
       `${m.topTokens[0]?.token ?? "Your top token"} makes up ${Math.round(m.concentrationPct)}% of deployed capital. ` +
       (me.patterns.length ? `Main behaviors to watch: ${me.patterns.map((p) => p.label.toLowerCase()).join(", ")}.` : "No strong negative patterns detected in this window.");
+  const journal = llmJournal || templated;
+  const earlyRead = m.trades > 0 && m.closedTrades < SAMPLE_TARGET
+    ? `Only ${plural(m.closedTrades, "closed trade")} found, and patterns need about ${SAMPLE_TARGET}, so treat this as an early read. `
+    : "";
   return {
-    me, fomo, journal: llmJournal || templated, journalSource: llmJournal ? "llm" : "template", generatedAt: new Date().toISOString(),
+    me, fomo, journal: earlyRead + journal, journalSource: llmJournal ? "llm" : "template", generatedAt: new Date().toISOString(),
     solUsd, tips: buildTips(me, sol), strengths: buildStrengths(m, sol), rules: buildRules(me, sol), comparisons: fomo.flatMap((f) => compare(m, f.metrics, f.label)),
   };
 }

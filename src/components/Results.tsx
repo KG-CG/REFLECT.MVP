@@ -1,13 +1,20 @@
-import type { AnalysisResult, Report } from "@/lib/types";
+import type { AnalysisResult, Metrics, Report } from "@/lib/types";
 import { Card, Stat, SourceBadge, fmtMin, type Tone } from "./ui";
-import { makeMoney } from "@/lib/analyze";
+import { makeMoney, plural } from "@/lib/analyze";
 
 const sevStyle = { low: "bg-slate-500/15 text-slate-300", med: "bg-accent/15 text-accent", high: "bg-loss/15 text-loss" };
 const sevLabel = { low: "Low", med: "Medium", high: "High" };
 const prio = { 1: ["Fix first", "bg-loss/15 text-loss"], 2: ["Improve", "bg-accent/15 text-accent"], 3: ["Habit", "bg-slate-500/15 text-slate-300"] } as const;
+const payoffStat = (m: Metrics): { value: string; tone: Tone; hint: string } => {
+  if (!m.closedTrades) return { value: "n/a", tone: "neutral", hint: `+${Math.round(m.avgWinPct * 100)}% / −${Math.round(m.avgLossPct * 100)}%` };
+  if (m.winRate === 1) return { value: "No losses", tone: "good", hint: `avg win +${Math.round(m.avgWinPct * 100)}%` };
+  if (m.winRate === 0) return { value: "No wins", tone: "bad", hint: `avg loss −${Math.round(m.avgLossPct * 100)}%` };
+  return { value: `${m.payoffRatio.toFixed(2)}×`, tone: m.payoffRatio >= 1 ? "good" : "bad", hint: `+${Math.round(m.avgWinPct * 100)}% / −${Math.round(m.avgLossPct * 100)}%` };
+};
 
 export function Results({ data }: { data: AnalysisResult }) {
   const m = data.me.metrics, signed = makeMoney(data.solUsd), pnlTone = (n: number): Tone => (n > 0 ? "good" : n < 0 ? "bad" : "neutral");
+  const payoff = payoffStat(m);
   return (
     <div className="space-y-4">
       <Card title="Journal" subtitle={`Updated ${new Date(data.generatedAt).toLocaleString()} · ${data.journalSource === "llm" ? "AI-written" : "auto-generated"}`} action={<SourceBadge />} id="journal">
@@ -21,13 +28,13 @@ export function Results({ data }: { data: AnalysisResult }) {
       </Card>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <Stat label="Realized PnL" value={signed(m.realizedPnlSol)} tone={pnlTone(m.realizedPnlSol)} hint={`${m.closedTrades} closed trades`} />
+        <Stat label="Realized PnL" value={signed(m.realizedPnlSol)} tone={pnlTone(m.realizedPnlSol)} hint={plural(m.closedTrades, "closed trade")} />
         <Stat label="Unrealized PnL" value={m.unrealizedPnlSol === null ? "n/a" : signed(m.unrealizedPnlSol)} tone={m.unrealizedPnlSol === null ? "neutral" : pnlTone(m.unrealizedPnlSol)} hint={`${m.openPositions} open (${signed(m.openCostSol, false)})`} />
-        <Stat label="Win rate" value={`${Math.round(m.winRate * 100)}%`} hint={`${m.trades} positions`} />
+        <Stat label="Win rate" value={`${Math.round(m.winRate * 100)}%`} hint={plural(m.trades, "position")} />
         <Stat label="Expectancy" value={signed(m.expectancySol)} tone={pnlTone(m.expectancySol)} hint="avg per closed trade" />
-        <Stat label="Avg win / loss" value={m.payoffRatio ? `${m.payoffRatio.toFixed(2)}×` : "n/a"} tone={m.payoffRatio >= 1 ? "good" : m.payoffRatio ? "bad" : "neutral"} hint={`+${Math.round(m.avgWinPct * 100)}% / −${Math.round(m.avgLossPct * 100)}%`} />
+        <Stat label="Avg win / loss" value={payoff.value} tone={payoff.tone} hint={payoff.hint} />
         <Stat label="Hold: winners" value={fmtMin(m.avgHoldWinMin)} hint={`losers ${fmtMin(m.avgHoldLossMin)}`} />
-        <Stat label="Top token" value={`${Math.round(m.concentrationPct)}%`} tone={m.concentrationPct > 40 ? "bad" : "neutral"} hint={m.topTokens[0]?.token ?? ""} />
+        <Stat label="Top token" value={`${Math.round(m.concentrationPct)}%`} tone={m.concentrationPct > 40 && m.trades >= 5 ? "bad" : "neutral"} hint={m.topTokens[0]?.token ?? ""} />
         <Stat label="Positions / day" value={m.tradesPerDay.toFixed(1)} tone={m.tradesPerDay > 5 ? "bad" : "neutral"} />
       </div>
 
@@ -102,7 +109,7 @@ function Comparison({ data }: { data: AnalysisResult }) {
 /** Most recent positions with the real token, result and size. Open positions show unrealized PnL when priced. */
 function RecentTrades({ data }: { data: AnalysisResult }) {
   const signed = makeMoney(data.solUsd), rows = data.me.metrics.recent;
-  const ago = (ts: number) => { const h = (Date.now() - ts) / 36e5; return h < 1 ? `${Math.max(1, Math.round(h * 60))}m ago` : h < 48 ? `${Math.round(h)}h ago` : `${Math.round(h / 24)}d ago`; };
+  const ago = (ts: number) => { const h = (Date.now() - ts) / 36e5, days = h / 24; return h < 1 ? `${Math.max(1, Math.round(h * 60))}m ago` : h < 48 ? `${Math.round(h)}h ago` : days > 365 ? `${(days / 365).toFixed(1)}y ago` : `${Math.round(days)}d ago`; };
   return (
     <Card title="Recent trades" subtitle="Latest positions with their real result" id="recent">
       <div className="overflow-x-auto">
