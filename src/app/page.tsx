@@ -5,6 +5,7 @@ import { LIMITS } from "@/lib/limits";
 import { Card } from "@/components/ui";
 import { WalletList } from "@/components/WalletList";
 import { BurnSchedule } from "@/components/BurnSchedule";
+import { RoadmapButton } from "@/components/RoadmapButton";
 import { Results } from "@/components/Results";
 
 
@@ -57,6 +58,7 @@ export default function Home() {
             <div className="font-semibold uppercase leading-none tracking-[0.2em] text-white">Reflect</div>
           </div>
           <div className="flex gap-2">
+            <RoadmapButton wallets={wallets} />
             <button onClick={() => run()} disabled={!wallets.length || loading || cooldown > 0} className="btn-neon rounded-lg px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none">
               {loading ? "Analyzing…" : cooldown > 0 ? `Wait ${cooldown}s` : data ? "Refresh summary" : "Analyze"}
             </button>
