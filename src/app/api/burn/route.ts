@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
-import { getTier } from "@/lib/tiers";
+import { REFLECT_MINT, getTier } from "@/lib/tiers";
 import { burnPlan } from "@/lib/burn";
 
 export const dynamic = "force-dynamic";
 const ADDR = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 async function marketCap(): Promise<number | null> {
-  const mint = process.env.REFLECT_TOKEN_MINT;
-  if (!mint) return null;
+  const mint = REFLECT_MINT;
   try {
     const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`, { next: { revalidate: 60 }, signal: AbortSignal.timeout(6000) });
     const p = (await r.json())?.pairs?.[0];

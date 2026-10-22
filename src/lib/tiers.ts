@@ -2,18 +2,19 @@ import { shared, TtlCache } from "./guard";
 
 /**
  * ACCESS CONTROL: holding $REFLECT unlocks the premium tier.
- * Set REFLECT_TOKEN_MINT (the token's mint address) to turn detection on; without it everyone is "free".
+ * The $REFLECT mint defaults to the pump.fun token below; set REFLECT_TOKEN_MINT to override it.
  * REFLECT_MIN_BALANCE (default 1) is the minimum token amount that counts as an open position.
  * Premium also gets priority: its own request line, a higher rate limit and a reserved daily capacity.
  */
 export { LIMITS, type Tier } from "./limits";
 import type { Tier } from "./limits";
 
+export const REFLECT_MINT = process.env.REFLECT_TOKEN_MINT || "2dv5JPuvXMwMyjrkNxRGaw92ZTNufMPFSWQot9Fcpump";
 const ADDR = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const cache = shared("holderCache", () => new TtlCache<boolean>(5 * 60_000, 2000));
 
 async function holdsReflect(owner: string): Promise<boolean> {
-  const mint = process.env.REFLECT_TOKEN_MINT, key = process.env.HELIUS_API_KEY;
+  const mint = REFLECT_MINT, key = process.env.HELIUS_API_KEY;
   if (!mint || !key || !ADDR.test(owner)) return false;
   const hit = cache.get(owner);
   if (hit !== undefined) return hit;
