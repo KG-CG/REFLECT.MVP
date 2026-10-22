@@ -4,10 +4,13 @@ export interface Position {
   costSol: number; proceedsSol: number;
   adds: number; addsLower: number; // extra buys / extra buys at a lower price (averaging down)
   mint?: string; symbol?: string; openQty?: number; // set for open positions so we can price them
+  basisSol?: number;               // open: cost basis of what is still held (average-cost method)
+  realizedSol?: number;            // open: PnL already realized from partial sells
+  avgCostSol?: number;             // average entry price, SOL per token
   markSol?: number;                // current value of an open position in SOL (unrealized)
 }
 /** One row of the "Recent trades" table: a real token with its real result. */
-export interface RecentTrade { token: string; mint?: string; ts: number; open: boolean; costSol: number; pnlSol: number | null; pnlPct: number | null; holdMin: number | null }
+export interface RecentTrade { token: string; mint?: string; ts: number; open: boolean; costSol: number; avgCostSol: number | null; pnlSol: number | null; pnlPct: number | null; holdMin: number | null }
 export interface Metrics {
   trades: number; winRate: number; avgHoldWinMin: number; avgHoldLossMin: number;
   realizedPnlSol: number; unrealizedPnlSol: number | null; openPositions: number; openCostSol: number;

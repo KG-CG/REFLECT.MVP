@@ -65,6 +65,23 @@ function toFills(txs: any[], wallet: string, solUsd: number | null): Fill[] {
 }
 
 /**
+ * The wallet's real SOL change in a transaction, from account balance changes. nativeTransfers misses lamports
+ * moved by programs directly (e.g. pump.fun sell proceeds), which made many sells look like they paid nothing.
+ * Network fees and token-account rent are excluded so only the trade itself is counted.
+ */
+function walletSolDelta(tx: any, wallet: string): number {
+  const data: any[] = tx.accountData ?? [];
+  const me = data.find((a) => a.account === wallet);
+  if (!me) return (tx.nativeTransfers ?? []).reduce((s: number, t: any) => s + (t.toUserAccount === wallet ? t.amount : 0) - (t.fromUserAccount === wallet ? t.amount : 0), 0) / 1e9;
+  let d = Number(me.nativeBalanceChange) || 0;
+  if (tx.feePayer === wallet) d += Number(tx.fee) || 0;
+  for (const a of data) { // rent paid into / refunded from the wallet's own (non-wSOL) token accounts
+    if (a.account !== wallet && (a.tokenBalanceChanges ?? []).some((b: any) => b.userAccount === wallet && b.mint !== SOL_MINT)) d -= Number(a.nativeBalanceChange) || 0;
+  }
+  return d / 1e9;
+}
+
+/**
  * Turns one transaction into a buy or sell, using the wallet's net token movements:
  * exactly one non-quote mint must move, against stablecoins and/or SOL going the other way.
  * Cost/proceeds only count quote flows opposite to the token flow, so route leftovers and rent refunds
@@ -72,6 +89,7 @@ function toFills(txs: any[], wallet: string, solUsd: number | null): Fill[] {
  * CURRENT SOL price (approximation: win rate and hold times are unaffected, absolute PnL is approximate).
  */
 function netFill(tx: any, wallet: string, solUsd: number | null): Fill | null {
+  if (tx.transactionError) return null;
   const net = new Map<string, number>();
   for (const t of tx.tokenTransfers ?? []) {
     const amt = Number(t.tokenAmount) || 0;
@@ -81,7 +99,7 @@ function netFill(tx: any, wallet: string, solUsd: number | null): Fill | null {
   const base = [...net].filter(([m, v]) => !STABLES.has(m) && m !== SOL_MINT && Math.abs(v) > 0);
   if (base.length !== 1) return null; // not a swap, or ambiguous (multi-token)
   const [mint, qty] = base[0];
-  const nativeNet = (tx.nativeTransfers ?? []).reduce((s: number, t: any) => s + (t.toUserAccount === wallet ? t.amount : 0) - (t.fromUserAccount === wallet ? t.amount : 0), 0) / 1e9;
+  const nativeNet = walletSolDelta(tx, wallet);
   const stableNet = [...net].filter(([m]) => STABLES.has(m)).reduce((s, [, v]) => s + v, 0);
   const solNet = (net.get(SOL_MINT) ?? 0) + nativeNet;
   let sol = 0;
@@ -91,21 +109,32 @@ function netFill(tx: any, wallet: string, solUsd: number | null): Fill | null {
   return { ts: tx.timestamp * 1000, token: mint, side: qty > 0 ? "buy" : "sell", sol, qty: Math.abs(qty) };
 }
 
-/** Group fills per token into positions. A position closes once ~all bought tokens are sold. */
+/**
+ * Group fills per token into positions using average-cost accounting. A position closes once ~all bought
+ * tokens are sold. Open positions carry the cost basis and average entry of what is still held.
+ */
 function fillsToPositions(fills: Fill[]): Position[] {
-  const out: Position[] = [], open = new Map<string, Position & { bought: number; sold: number; lastPx: number; lastTs: number }>();
+  type Run = Position & { bought: number; sold: number; held: number; basis: number; realized: number; lastPx: number; lastTs: number };
+  const out: Position[] = [], open = new Map<string, Run>();
   for (const f of fills) {
     const p = open.get(f.token), px = f.sol / f.qty;
     if (f.side === "buy") {
-      if (!p) open.set(f.token, { token: f.token.slice(0, 4), entryTs: f.ts, exitTs: null, costSol: f.sol, proceedsSol: 0, adds: 0, addsLower: 0, mint: f.token, bought: f.qty, sold: 0, lastPx: px, lastTs: f.ts });
-      else { p.costSol += f.sol; p.bought += f.qty; p.adds++; if (px < p.lastPx) p.addsLower++; p.lastPx = px; p.lastTs = f.ts; }
+      if (!p) open.set(f.token, { token: f.token.slice(0, 4), entryTs: f.ts, exitTs: null, costSol: f.sol, proceedsSol: 0, adds: 0, addsLower: 0, mint: f.token, bought: f.qty, sold: 0, held: f.qty, basis: f.sol, realized: 0, lastPx: px, lastTs: f.ts });
+      else { p.costSol += f.sol; p.bought += f.qty; p.held += f.qty; p.basis += f.sol; p.adds++; if (px < p.lastPx) p.addsLower++; p.lastPx = px; p.lastTs = f.ts; }
     } else if (p) { // sells with no matching buy in our window are ignored
+      const frac = Math.min(1, f.qty / Math.max(p.held, 1e-12)), released = p.basis * frac;
       p.proceedsSol += f.sol; p.sold += f.qty; p.lastTs = f.ts;
-      if (p.sold >= p.bought * 0.95) { p.exitTs = f.ts; const { bought, sold, lastPx, lastTs, ...pos } = p; out.push(pos); open.delete(f.token); }
+      p.realized += f.sol - released; p.basis -= released; p.held = Math.max(0, p.held - f.qty);
+      if (p.sold >= p.bought * 0.95) { p.exitTs = f.ts; out.push(finish(p)); open.delete(f.token); }
     }
   }
-  for (const p of open.values()) { const { bought, sold, lastPx, lastTs, ...pos } = p; out.push({ ...pos, openQty: Math.max(0, bought - sold), lastTs } as Position); } // still open
+  for (const p of open.values()) out.push({ ...finish(p), openQty: Math.max(0, p.held), basisSol: p.basis, realizedSol: p.realized, avgCostSol: p.held > 0 ? p.basis / p.held : p.costSol / p.bought, lastTs: p.lastTs } as Position); // still open
   return out.sort((a, b) => a.entryTs - b.entryTs);
+
+  function finish(p: Run): Position {
+    const { bought, sold, held, basis, realized, lastPx, lastTs, ...pos } = p;
+    return { ...pos, avgCostSol: bought ? p.costSol / bought : undefined };
+  }
 }
 
 /** Current token balances by mint (both token programs), or null if the lookup fails. */
@@ -144,7 +173,11 @@ async function reconcileOpen(ps: Position[], owner: string, key: string): Promis
     const { lastTs, ...rest } = p as Position & { lastTs?: number };
     if (rest.exitTs || !rest.mint) { out.push(rest); continue; }
     const held = bal.get(rest.mint) ?? 0;
-    if (held >= (rest.openQty ?? 0) * 0.05 && held > 0) { out.push({ ...rest, openQty: Math.min(rest.openQty ?? held, held) }); continue; }
+    if (held >= (rest.openQty ?? 0) * 0.05 && held > 0) {
+      const q = rest.openQty ?? held, keep = Math.min(q, held);
+      out.push({ ...rest, openQty: keep, basisSol: (rest.basisSol ?? rest.costSol) * (q ? keep / q : 1) });
+      continue;
+    }
     if (rest.proceedsSol > 0) out.push({ ...rest, exitTs: lastTs ?? rest.entryTs, openQty: undefined }); // effectively exited
     // no proceeds and no balance: tokens left the wallet unsold, so there is no honest PnL to report
   }

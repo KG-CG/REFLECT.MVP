@@ -29,8 +29,9 @@ export function computeMetrics(ps: Position[]): Metrics {
   const lastTs = (p: Position) => p.exitTs ?? p.entryTs;
   const recent = [...ps].sort((x, y) => lastTs(y) - lastTs(x)).slice(0, 12).map((p) => {
     const mark = !p.exitTs && p.markSol !== undefined ? p.markSol : null;
-    const pnlSol = p.exitTs ? pnl(p) : mark !== null ? mark + p.proceedsSol - p.costSol : null;
-    return { token: p.symbol || p.token, mint: p.mint, ts: lastTs(p), open: !p.exitTs, costSol: p.costSol, pnlSol, pnlPct: pnlSol !== null && p.costSol ? pnlSol / p.costSol : null, holdMin: p.exitTs ? hold(p) : null };
+    const basis = p.basisSol ?? p.costSol;
+    const pnlSol = p.exitTs ? pnl(p) : mark !== null ? mark - basis + (p.realizedSol ?? p.proceedsSol) : null;
+    return { token: p.symbol || p.token, mint: p.mint, ts: lastTs(p), open: !p.exitTs, costSol: p.exitTs ? p.costSol : basis, avgCostSol: p.avgCostSol ?? null, pnlSol, pnlPct: pnlSol !== null && p.costSol ? pnlSol / (p.exitTs ? p.costSol : p.costSol) : null, holdMin: p.exitTs ? hold(p) : null };
   });
   const worst = Math.max(0, ...losses.map((p) => -pnl(p)));
   return {
@@ -38,8 +39,8 @@ export function computeMetrics(ps: Position[]): Metrics {
     avgHoldWinMin: avg(wins.map(hold)), avgHoldLossMin: avg(losses.map(hold)),
     realizedPnlSol: sum(closed.map(pnl)),
     // open value + anything already sold from it - what it cost
-    unrealizedPnlSol: priced.length ? sum(priced.map((p) => p.markSol! + p.proceedsSol - p.costSol)) : null,
-    openPositions: open.length, openCostSol: sum(open.map((p) => p.costSol)),
+    unrealizedPnlSol: priced.length ? sum(priced.map((p) => p.markSol! - (p.basisSol ?? p.costSol))) : null,
+    openPositions: open.length, openCostSol: sum(open.map((p) => p.basisSol ?? p.costSol)),
     recent, topTokens, concentrationPct: (topTokens[0]?.share || 0) * 100, tradesPerDay: ps.length / days,
     avgWinPct: avg(wins.map((p) => pnl(p) / p.costSol)), avgLossPct: Math.abs(avg(losses.map((p) => pnl(p) / p.costSol))),
     // Per-trade return ratio, so it matches the "+x% / -y%" shown beside it and isn't skewed by a few big positions.
