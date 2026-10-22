@@ -1,13 +1,13 @@
 /**
  * Dev-supply burn plan: BASE_BURN at BASE_MCAP, then STEP_BURN for every STEP_MCAP of market cap above it,
- * until the whole dev supply is burned. DEV_SUPPLY (tokens) is read from env; the default is an assumption.
+ * until the whole dev supply is burned. DEV_SUPPLY (tokens) is read from env; default 87M = the dev wallet holding.
  */
 export const BASE_MCAP = 10_000, BASE_BURN = 10_000_000, STEP_BURN = 1_000_000, STEP_MCAP = 50_000;
 
 export type Milestone = { n: number; mcap: number; burn: number; cumulative: number; remaining: number };
 export type BurnPlan = { devSupply: number; milestones: Milestone[]; finalMcap: number };
 
-export function burnPlan(devSupply = Number(process.env.DEV_SUPPLY) || 50_000_000): BurnPlan {
+export function burnPlan(devSupply = Number(process.env.DEV_SUPPLY) || 87_000_000): BurnPlan {
   const milestones: Milestone[] = [];
   let done = 0;
   for (let n = 0; done < devSupply; n++) {
