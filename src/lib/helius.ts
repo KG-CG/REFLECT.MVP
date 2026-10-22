@@ -30,7 +30,7 @@ export async function getPositions(address: string): Promise<Result> {
   if (cached) return cached;
   return dedupe(`pos:${address}`, async () => {
     const [txs, solUsd] = await Promise.all([fetchTransactions(address, key), getSolUsd()]);
-    const positions = await priceOpenPositions(await nameTokens(fillsToPositions(toFills(txs, address, solUsd))));
+    const positions = await priceOpenPositions(await nameTokens(await reconcileOpen(fillsToPositions(toFills(txs, address, solUsd)), address, key)));
     if (!positions.length) throw new PublicError("No completed swaps found in this wallet's recent history.", 404);
     const r: Result = { positions, source: "helius" };
     resultCache.set(address, r);
@@ -93,19 +93,62 @@ function netFill(tx: any, wallet: string, solUsd: number | null): Fill | null {
 
 /** Group fills per token into positions. A position closes once ~all bought tokens are sold. */
 function fillsToPositions(fills: Fill[]): Position[] {
-  const out: Position[] = [], open = new Map<string, Position & { bought: number; sold: number; lastPx: number }>();
+  const out: Position[] = [], open = new Map<string, Position & { bought: number; sold: number; lastPx: number; lastTs: number }>();
   for (const f of fills) {
     const p = open.get(f.token), px = f.sol / f.qty;
     if (f.side === "buy") {
-      if (!p) open.set(f.token, { token: f.token.slice(0, 4), entryTs: f.ts, exitTs: null, costSol: f.sol, proceedsSol: 0, adds: 0, addsLower: 0, mint: f.token, bought: f.qty, sold: 0, lastPx: px });
-      else { p.costSol += f.sol; p.bought += f.qty; p.adds++; if (px < p.lastPx) p.addsLower++; p.lastPx = px; }
+      if (!p) open.set(f.token, { token: f.token.slice(0, 4), entryTs: f.ts, exitTs: null, costSol: f.sol, proceedsSol: 0, adds: 0, addsLower: 0, mint: f.token, bought: f.qty, sold: 0, lastPx: px, lastTs: f.ts });
+      else { p.costSol += f.sol; p.bought += f.qty; p.adds++; if (px < p.lastPx) p.addsLower++; p.lastPx = px; p.lastTs = f.ts; }
     } else if (p) { // sells with no matching buy in our window are ignored
-      p.proceedsSol += f.sol; p.sold += f.qty;
-      if (p.sold >= p.bought * 0.95) { p.exitTs = f.ts; const { bought, sold, lastPx, ...pos } = p; out.push(pos); open.delete(f.token); }
+      p.proceedsSol += f.sol; p.sold += f.qty; p.lastTs = f.ts;
+      if (p.sold >= p.bought * 0.95) { p.exitTs = f.ts; const { bought, sold, lastPx, lastTs, ...pos } = p; out.push(pos); open.delete(f.token); }
     }
   }
-  for (const p of open.values()) { const { bought, sold, lastPx, ...pos } = p; out.push({ ...pos, openQty: Math.max(0, bought - sold) }); } // still open
+  for (const p of open.values()) { const { bought, sold, lastPx, lastTs, ...pos } = p; out.push({ ...pos, openQty: Math.max(0, bought - sold), lastTs } as Position); } // still open
   return out.sort((a, b) => a.entryTs - b.entryTs);
+}
+
+/** Current token balances by mint (both token programs), or null if the lookup fails. */
+async function currentBalances(owner: string, key: string): Promise<Map<string, number> | null> {
+  const bal = new Map<string, number>();
+  let ok = 0;
+  for (const programId of ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"]) {
+    try {
+      const res = await heliusLimiter.run(() => fetch(`https://mainnet.helius-rpc.com/?api-key=${key}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(10000),
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getTokenAccountsByOwner", params: [owner, { programId }, { encoding: "jsonParsed" }] }),
+      }));
+      const j = res.ok ? await res.json() : null;
+      if (!Array.isArray(j?.result?.value)) continue;
+      ok++;
+      for (const a of j.result.value) {
+        const i = a?.account?.data?.parsed?.info;
+        if (i?.mint) bal.set(i.mint, (bal.get(i.mint) ?? 0) + (Number(i.tokenAmount?.uiAmount) || 0));
+      }
+    } catch { /* tolerate one program failing */ }
+  }
+  return ok === 2 ? bal : null;
+}
+
+/**
+ * Open positions are inferred from swaps in the scanned window, so a token that was moved out, sold in a
+ * transaction we can't parse, or bought before the window would show as open. Check against real balances:
+ * cap the open amount to what the wallet holds; if it holds (almost) none, it is not open.
+ */
+async function reconcileOpen(ps: Position[], owner: string, key: string): Promise<Position[]> {
+  if (!ps.some((p) => !p.exitTs)) return ps;
+  const bal = await currentBalances(owner, key);
+  if (!bal) return ps;
+  const out: Position[] = [];
+  for (const p of ps) {
+    const { lastTs, ...rest } = p as Position & { lastTs?: number };
+    if (rest.exitTs || !rest.mint) { out.push(rest); continue; }
+    const held = bal.get(rest.mint) ?? 0;
+    if (held >= (rest.openQty ?? 0) * 0.05 && held > 0) { out.push({ ...rest, openQty: Math.min(rest.openQty ?? held, held) }); continue; }
+    if (rest.proceedsSol > 0) out.push({ ...rest, exitTs: lastTs ?? rest.entryTs, openQty: undefined }); // effectively exited
+    // no proceeds and no balance: tokens left the wallet unsold, so there is no honest PnL to report
+  }
+  return out;
 }
 
 let solCache: { v: number; at: number } | null = null;
