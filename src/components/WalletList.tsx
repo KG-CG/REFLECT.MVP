@@ -25,17 +25,26 @@ const WALLETS: Record<Wallet, { label: string; url: string; browse: string; get:
  * Add/remove list with a toggle: track a Solana wallet address OR a FOMO account handle.
  * Handles are stored as "@name" and resolved to a wallet server-side (lib/handles.ts).
  */
-export function WalletList({ items, setItems, max, slot }: { items: string[]; setItems: (v: string[]) => void; max: number; slot: string }) {
+export function WalletList({ items, setItems, max, slot, connect = true, empty }: { items: string[]; setItems: (v: string[]) => void; max: number; slot: string; connect?: boolean; empty?: string }) {
   const [mode, setMode] = useState<Mode>("handle"), [v, setV] = useState(""), [err, setErr] = useState(""), [limit, setLimit] = useState(false);
-  const add = (raw = v, m: Mode = mode) => {
+  const input = useRef<HTMLInputElement>(null);
+  const validate = (raw: string, m: Mode) => {
+    const x = raw.trim();
+    if (!x || findAddress(x)) return "";
+    if (m === "address") return ADDR.test(x) ? "" : "That doesn't look like a Solana address (32–44 characters, no 0, O, I or l).";
+    return HANDLE.test(x) ? "" : "FOMO handles are 2–30 letters, numbers or underscores, e.g. @yourhandle.";
+  };
+  const add = (raw = input.current?.value ?? v, m: Mode = mode) => {
     let x = raw.trim();
-    if (!x) return;
-    if (m === "address") { x = findAddress(x) ?? x; if (!ADDR.test(x)) return setErr("That doesn't look like a Solana address (32–44 characters)."); }
-    else { if (!HANDLE.test(x)) return setErr("FOMO handles are letters, numbers and underscores."); x = `@${x.replace(/^@/, "")}`; }
+    if (!x) return setErr(m === "address" ? "Paste a Solana address or pump.fun link first." : "Type a FOMO handle first, e.g. @yourhandle.");
+    const address = findAddress(x);
+    if (address) x = address;
+    else if (m === "address") return setErr(validate(x, m));
+    else { if (!HANDLE.test(x)) return setErr(validate(x, m)); x = `@${x.replace(/^@/, "")}`; }
     if (items.some((i) => i.toLowerCase() === x.toLowerCase())) return setErr("Already added.");
     // PREMIUM HOOK: the cap comes from lib/tiers.ts; $REFLECT holders get a higher one.
     if (items.length >= max) { setErr(""); return setLimit(true); }
-    setItems([...items, x]); setV(""); setErr("");
+    setItems([...items, x]); setV(""); if (input.current) input.current.value = ""; setErr("");
   };
   const latest = useRef({ items, add });
   latest.current = { items, add };
@@ -78,28 +87,29 @@ export function WalletList({ items, setItems, max, slot }: { items: string[]; se
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const tab = (m: Mode, label: string) => (
-    <button type="button" onClick={() => { setMode(m); setErr(""); }} aria-pressed={mode === m}
+    <button type="button" onClick={() => { setMode(m); setErr(validate(v, m)); }} aria-pressed={mode === m}
       className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${mode === m ? "bg-accent/20 text-white shadow-inner" : "text-slate-400 hover:text-white"}`}>{label}</button>
   );
   return (
     <div>
       <div role="group" aria-label="Track by" className="mb-3 flex gap-1 rounded-lg border border-line bg-ink/70 p-1">{tab("handle", "FOMO handle")}{tab("address", "Solana address")}</div>
       <form onSubmit={(e) => { e.preventDefault(); add(); }} className="flex gap-2">
-        <input value={v} onChange={(e) => { setV(e.target.value); setErr(""); }} spellCheck={false} autoCapitalize="none" autoCorrect="off"
+        <input ref={input} value={v} onChange={(e) => { setV(e.target.value); setErr(validate(e.target.value, mode)); }} spellCheck={false} autoCapitalize="none" autoCorrect="off" aria-invalid={!!err}
           placeholder={mode === "handle" ? "@yourhandle" : "Paste a Solana address or pump.fun link"} aria-label={mode === "handle" ? "FOMO handle" : "Solana address"}
           className="min-w-0 flex-1 rounded-lg border border-line bg-ink px-3 py-2.5 text-sm outline-none transition placeholder:text-slate-600 focus:border-accent focus:shadow-glow" />
-        <button type="submit" className="btn-neon rounded-lg px-4 text-sm">Add</button>
+        <button type="button" onClick={(e) => { e.preventDefault(); add(); }} className="btn-neon rounded-lg px-4 text-sm">Add</button>
       </form>
       {mode === "address" && (
         <div className="mt-2 grid grid-cols-2 gap-2">
-          {(Object.keys(WALLETS) as Wallet[]).map((k) => (
+          {connect && (Object.keys(WALLETS) as Wallet[]).map((k) => (
             <button key={k} type="button" onClick={() => connectWallet(k)} className="rounded-lg border border-line bg-ink/70 px-3 py-2 text-xs text-slate-200 transition hover:border-accent">Connect {WALLETS[k].label}</button>
           ))}
           <button type="button" onClick={pasteClipboard} className="col-span-2 rounded-lg border border-line bg-ink/70 px-3 py-2 text-xs text-slate-200 transition hover:border-accent">Paste from clipboard</button>
         </div>
       )}
-      {err && <p role="alert" className="mt-2 text-xs text-loss">{err}</p>}
+      {err && <p aria-live="polite" className="mt-2 text-xs text-loss">{err}</p>}
       <ul className="mt-3 space-y-1.5">
+        {!items.length && empty && <li className="rounded-lg border border-dashed border-line px-3 py-3 text-sm text-slate-400">{empty}</li>}
         {items.map((a) => {
           const isHandle = a.startsWith("@");
           return (
