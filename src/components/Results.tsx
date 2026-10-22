@@ -7,8 +7,8 @@ const sevLabel = { low: "Low", med: "Medium", high: "High" };
 const prio = { 1: ["Fix first", "bg-loss/15 text-loss"], 2: ["Improve", "bg-accent/15 text-accent"], 3: ["Habit", "bg-slate-500/15 text-slate-300"] } as const;
 const payoffStat = (m: Metrics): { value: string; tone: Tone; hint: string } => {
   if (!m.closedTrades) return { value: "n/a", tone: "neutral", hint: `+${Math.round(m.avgWinPct * 100)}% / −${Math.round(m.avgLossPct * 100)}%` };
-  if (m.winRate === 1) return { value: "No losses", tone: "good", hint: `avg win +${Math.round(m.avgWinPct * 100)}%` };
-  if (m.winRate === 0) return { value: "No wins", tone: "bad", hint: `avg loss −${Math.round(m.avgLossPct * 100)}%` };
+  if (!m.avgWinPct) return { value: "No wins", tone: "bad", hint: `avg loss −${Math.round(m.avgLossPct * 100)}%` };
+  if (!m.avgLossPct) return { value: "No losses", tone: "good", hint: `avg win +${Math.round(m.avgWinPct * 100)}%` };
   return { value: `${m.payoffRatio.toFixed(2)}×`, tone: m.payoffRatio >= 1 ? "good" : "bad", hint: `+${Math.round(m.avgWinPct * 100)}% / −${Math.round(m.avgLossPct * 100)}%` };
 };
 
